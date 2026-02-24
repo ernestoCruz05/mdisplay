@@ -23,7 +23,7 @@ Before running, ensure you have:
 Clone the repository and compile using Cargo:
 
 ```bash
-git clone https://github.com/your-username/mango-display.git
+git clone https://github.com/ernestoCruz05/mango-display.git
 cd mango-display
 cargo build --release
 ```
