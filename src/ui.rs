@@ -68,6 +68,28 @@ impl MangoDisplay {
         }
     }
 
+    fn normalize_positions(&mut self) {
+        let min_x = self.outputs.iter().map(|o| o.position.0).min().unwrap_or(0);
+        let min_y = self.outputs.iter().map(|o| o.position.1).min().unwrap_or(0);
+
+        let mut changed = false;
+        let offset_x = if min_x < 0 { -min_x } else { 0 };
+        let offset_y = if min_y < 0 { -min_y } else { 0 };
+
+        if offset_x > 0 || offset_y > 0 {
+            for out in &mut self.outputs {
+                out.position.0 += offset_x;
+                out.position.1 += offset_y;
+            }
+            changed = true;
+        }
+
+        if changed {
+            self.update_inputs_for_selection();
+            self.layout_cache.clear();
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::MonitorClicked(idx) => {
@@ -84,14 +106,16 @@ impl MangoDisplay {
             }
             Message::XChanged(val) => {
                 self.x_input = val.clone();
-                if let (Some(idx), Ok(v)) = (self.selected_output_idx, i32::from_str(&val)) {
+                if let (Some(idx), Ok(mut v)) = (self.selected_output_idx, i32::from_str(&val)) {
+                    if v < 0 { v = 0; }
                     self.outputs[idx].position.0 = v;
                     self.layout_cache.clear();
                 }
             }
             Message::YChanged(val) => {
                 self.y_input = val.clone();
-                if let (Some(idx), Ok(v)) = (self.selected_output_idx, i32::from_str(&val)) {
+                if let (Some(idx), Ok(mut v)) = (self.selected_output_idx, i32::from_str(&val)) {
+                    if v < 0 { v = 0; }
                     self.outputs[idx].position.1 = v;
                     self.layout_cache.clear();
                 }
@@ -105,9 +129,11 @@ impl MangoDisplay {
             }
             Message::XDec => {
                 if let Some(idx) = self.selected_output_idx {
-                    self.outputs[idx].position.0 -= 1;
-                    self.update_inputs_for_selection();
-                    self.layout_cache.clear();
+                    if self.outputs[idx].position.0 > 0 {
+                        self.outputs[idx].position.0 -= 1;
+                        self.update_inputs_for_selection();
+                        self.layout_cache.clear();
+                    }
                 }
             }
             Message::YInc => {
@@ -119,9 +145,11 @@ impl MangoDisplay {
             }
             Message::YDec => {
                 if let Some(idx) = self.selected_output_idx {
-                    self.outputs[idx].position.1 -= 1;
-                    self.update_inputs_for_selection();
-                    self.layout_cache.clear();
+                    if self.outputs[idx].position.1 > 0 {
+                        self.outputs[idx].position.1 -= 1;
+                        self.update_inputs_for_selection();
+                        self.layout_cache.clear();
+                    }
                 }
             }
             Message::ScaleChanged(val) => {
@@ -173,11 +201,13 @@ impl MangoDisplay {
                 }
             }
             Message::ApplyClicked => {
+                self.normalize_positions();
                 if let Err(e) = wlr_randr_apply(&self.outputs) {
                     println!("Apply Error: {}", e);
                 }
             }
             Message::SaveClicked => {
+                self.normalize_positions();
                 if let Err(e) = wlr_randr_save(&self.outputs, &self.settings) {
                     println!("Save Error: {}", e);
                 } else {
@@ -532,8 +562,10 @@ impl<'a> Program<Message> for LayoutCanvas<'a> {
                     let delta_x = (position.x - start_cursor.x) / scale;
                     let delta_y = (position.y - start_cursor.y) / scale;
 
-                    let new_x = start_logical.0 + delta_x.round() as i32;
-                    let new_y = start_logical.1 + delta_y.round() as i32;
+                    let mut new_x = start_logical.0 + delta_x.round() as i32;
+                    let mut new_y = start_logical.1 + delta_y.round() as i32;
+                    if new_x < 0 { new_x = 0; }
+                    if new_y < 0 { new_y = 0; }
 
                     let snap_threshold = 40;
 
@@ -628,6 +660,9 @@ impl<'a> Program<Message> for LayoutCanvas<'a> {
                     if snapped_y == new_y {
                         snapped_y = (snapped_y as f32 / 10.0).round() as i32 * 10;
                     }
+
+                    if snapped_x < 0 { snapped_x = 0; }
+                    if snapped_y < 0 { snapped_y = 0; }
 
                     return Some(Action::publish(Message::MonitorPositioned(
                         idx, snapped_x, snapped_y,
