@@ -8,10 +8,8 @@ use iced::{
 };
 use std::str::FromStr;
 
-use crate::backend::{
-    Output, OutputMode, wlr_randr_apply, wlr_randr_get_outputs, wlr_randr_restore_default,
-    wlr_randr_save,
-};
+use crate::backend::{Output, OutputMode, restore_default_config, save_config};
+use crate::wayland::{apply_outputs, fetch_outputs};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -48,7 +46,7 @@ pub struct MangoDisplay {
 
 impl Default for MangoDisplay {
     fn default() -> Self {
-        let outputs = wlr_randr_get_outputs().unwrap_or_default();
+        let outputs = fetch_outputs().unwrap_or_default();
         let selected_output_idx = if !outputs.is_empty() { Some(0) } else { None };
         let mut app = Self {
             outputs,
@@ -226,14 +224,14 @@ impl MangoDisplay {
             }
             Message::ApplyClicked => {
                 self.normalize_positions();
-                match wlr_randr_apply(&self.outputs) {
+                match apply_outputs(&self.outputs) {
                     Ok(()) => self.status_message = Some("Applied successfully!".to_string()),
                     Err(e) => self.status_message = Some(format!("Apply error: {}", e)),
                 }
             }
             Message::SaveClicked => {
                 self.normalize_positions();
-                match wlr_randr_save(&self.outputs, &self.settings) {
+                match save_config(&self.outputs, &self.settings) {
                     Ok(()) => {
                         self.status_message =
                             Some(format!("Saved to {}", self.settings.monitors_conf_path))
@@ -241,7 +239,7 @@ impl MangoDisplay {
                     Err(e) => self.status_message = Some(format!("Save error: {}", e)),
                 }
             }
-            Message::RestoreDefaultClicked => match wlr_randr_restore_default(&self.settings) {
+            Message::RestoreDefaultClicked => match restore_default_config(&self.settings) {
                 Ok(()) => self.status_message = Some("Restored to default config!".to_string()),
                 Err(e) => self.status_message = Some(format!("Restore error: {}", e)),
             },
