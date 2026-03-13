@@ -62,28 +62,31 @@ pub fn save_config(
         }
     }
 
-    let expand_path = |p: &str| -> PathBuf {
+    let expand_path = |p: &str| -> Result<PathBuf, String> {
         if p.starts_with("~/") {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("/"))
-                .join(p.strip_prefix("~/").unwrap())
+            let home = dirs::home_dir()
+                .ok_or_else(|| "Could not determine home directory".to_string())?;
+            Ok(home.join(&p[2..]))
         } else {
-            PathBuf::from(p)
+            Ok(PathBuf::from(p))
         }
     };
 
-    let monitors_path = expand_path(&settings.monitors_conf_path);
-    let bak_path = expand_path(&settings.monitors_bak_path);
-    let config_path = expand_path(&settings.config_conf_path);
+    let monitors_path = expand_path(&settings.monitors_conf_path)?;
+    let bak_path = expand_path(&settings.monitors_bak_path)?;
+    let config_path = expand_path(&settings.config_conf_path)?;
 
     if !bak_path.exists() {
         if let Some(parent) = bak_path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create backup directory: {}", e))?;
         }
 
         let collect_monitorrules = |path: &PathBuf| -> Vec<String> {
-            fs::read_to_string(path)
-                .unwrap_or_default()
+            let Ok(content) = fs::read_to_string(path) else {
+                return Vec::new();
+            };
+            content
                 .lines()
                 .filter(|l| {
                     let t = l.trim();
@@ -93,14 +96,14 @@ pub fn save_config(
                 .collect()
         };
 
-        let resolve_source = |raw: &str| -> PathBuf {
+        let resolve_source = |raw: &str| -> Result<PathBuf, String> {
             if raw.starts_with("~/") || raw.starts_with('/') {
                 expand_path(raw)
             } else {
-                config_path
+                let parent = config_path
                     .parent()
-                    .unwrap_or_else(|| std::path::Path::new("/"))
-                    .join(raw)
+                    .ok_or_else(|| format!("Config path '{}' has no parent directory", config_path.display()))?;
+                Ok(parent.join(raw))
             }
         };
 
@@ -136,13 +139,14 @@ pub fn save_config(
                     };
 
                     if let Some(raw) = sourced_path_str {
-                        let sourced = resolve_source(raw);
-                        let rules = collect_monitorrules(&sourced);
-                        if !rules.is_empty() {
-                            backup_entries.push(serde_json::json!({
-                                "source_file": to_portable(&sourced),
-                                "rules": rules,
-                            }));
+                        if let Ok(sourced) = resolve_source(raw) {
+                            let rules = collect_monitorrules(&sourced);
+                            if !rules.is_empty() {
+                                backup_entries.push(serde_json::json!({
+                                    "source_file": to_portable(&sourced),
+                                    "rules": rules,
+                                }));
+                            }
                         }
                     }
                 }
@@ -150,7 +154,9 @@ pub fn save_config(
         }
 
         let backup_json = serde_json::json!({ "entries": backup_entries });
-        fs::write(&bak_path, serde_json::to_string_pretty(&backup_json).unwrap_or_default())
+        let backup_json_str = serde_json::to_string_pretty(&backup_json)
+            .map_err(|e| format!("Failed to serialize backup data: {}", e))?;
+        fs::write(&bak_path, backup_json_str)
             .map_err(|e| format!("Failed to write monitors.bak: {}", e))?;
     }
 
@@ -178,7 +184,8 @@ pub fn save_config(
         if needs_source {
             use std::io::Write;
             if let Some(parent) = config_path.parent() {
-                let _ = fs::create_dir_all(parent);
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create config directory: {}", e))?;
             }
             let mut file = std::fs::OpenOptions::new()
                 .create(true)
@@ -195,19 +202,19 @@ pub fn save_config(
 }
 
 pub fn restore_default_config(settings: &crate::settings::AppSettings) -> Result<(), String> {
-    let expand_path = |p: &str| -> PathBuf {
+    let expand_path = |p: &str| -> Result<PathBuf, String> {
         if p.starts_with("~/") {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("/"))
-                .join(p.strip_prefix("~/").unwrap())
+            let home = dirs::home_dir()
+                .ok_or_else(|| "Could not determine home directory".to_string())?;
+            Ok(home.join(&p[2..]))
         } else {
-            PathBuf::from(p)
+            Ok(PathBuf::from(p))
         }
     };
 
-    let config_path = expand_path(&settings.config_conf_path);
-    let monitors_path = expand_path(&settings.monitors_conf_path);
-    let bak_path = expand_path(&settings.monitors_bak_path);
+    let config_path = expand_path(&settings.config_conf_path)?;
+    let monitors_path = expand_path(&settings.monitors_conf_path)?;
+    let bak_path = expand_path(&settings.monitors_bak_path)?;
 
     let backup: serde_json::Value = if bak_path.exists() {
         let raw = fs::read_to_string(&bak_path)
@@ -217,7 +224,7 @@ pub fn restore_default_config(settings: &crate::settings::AppSettings) -> Result
         serde_json::json!({ "entries": [] })
     };
 
-    let entries = backup["entries"].as_array().cloned().unwrap_or_default();
+    let entries = backup["entries"].as_array().cloned().unwrap_or_else(Vec::new);
 
     let strip_monitorrules = |content: &str| -> String {
         content
@@ -259,7 +266,7 @@ pub fn restore_default_config(settings: &crate::settings::AppSettings) -> Result
         if let (Some(source_file), Some(rules)) =
             (entry["source_file"].as_str(), entry["rules"].as_array())
         {
-            let target_path = expand_path(source_file);
+            let target_path = expand_path(source_file)?;
             let rules_block: String = rules
                 .iter()
                 .filter_map(|r| r.as_str())
@@ -271,14 +278,16 @@ pub fn restore_default_config(settings: &crate::settings::AppSettings) -> Result
             }
 
             if target_path.exists() {
-                let content = fs::read_to_string(&target_path).unwrap_or_default();
+                let content = fs::read_to_string(&target_path)
+                    .map_err(|e| format!("Failed to read {}: {}", target_path.display(), e))?;
                 let cleaned = strip_monitorrules(&content);
                 let restored = format!("{}\n{}", cleaned.trim_end(), rules_block);
                 fs::write(&target_path, restored)
                     .map_err(|e| format!("Failed to restore rules to {}: {}", source_file, e))?;
             } else {
                 if let Some(parent) = target_path.parent() {
-                    let _ = fs::create_dir_all(parent);
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create directory for {}: {}", source_file, e))?;
                 }
                 fs::write(&target_path, rules_block)
                     .map_err(|e| format!("Failed to create {}: {}", source_file, e))?;
@@ -289,7 +298,7 @@ pub fn restore_default_config(settings: &crate::settings::AppSettings) -> Result
     let monitors_was_backed_up = entries.iter().any(|e| {
         e["source_file"]
             .as_str()
-            .map(|s| expand_path(s) == monitors_path)
+            .map(|s| expand_path(s).map(|p| p == monitors_path).unwrap_or(false))
             .unwrap_or(false)
     });
     if monitors_path.exists() && !monitors_was_backed_up {

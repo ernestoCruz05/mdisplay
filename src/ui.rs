@@ -66,10 +66,11 @@ impl Default for MangoDisplay {
 impl MangoDisplay {
     fn update_inputs_for_selection(&mut self) {
         if let Some(idx) = self.selected_output_idx {
-            let out = &self.outputs[idx];
-            self.x_input = out.position.0.to_string();
-            self.y_input = out.position.1.to_string();
-            self.scale_input = format!("{:.2}", out.scale);
+            if let Some(out) = self.outputs.get(idx) {
+                self.x_input = out.position.0.to_string();
+                self.y_input = out.position.1.to_string();
+                self.scale_input = format!("{:.2}", out.scale);
+            }
         }
     }
 
@@ -103,7 +104,9 @@ impl MangoDisplay {
                 self.layout_cache.clear();
             }
             Message::MonitorPositioned(idx, x, y) => {
-                self.outputs[idx].position = (x, y);
+                if let Some(out) = self.outputs.get_mut(idx) {
+                    out.position = (x, y);
+                }
                 if Some(idx) == self.selected_output_idx {
                     self.update_inputs_for_selection();
                 }
@@ -177,7 +180,13 @@ impl MangoDisplay {
                     self.layout_cache.clear();
                 }
             }
-            Message::ScaleDec => {}
+            Message::ScaleDec => {
+                if let Some(idx) = self.selected_output_idx {
+                    self.outputs[idx].scale -= 0.05;
+                    self.update_inputs_for_selection();
+                    self.layout_cache.clear();
+                }
+            }
             Message::EnabledToggled(val) => {
                 if let Some(idx) = self.selected_output_idx {
                     self.outputs[idx].enabled = val;
@@ -274,162 +283,162 @@ impl MangoDisplay {
         sidebar = sidebar.push(container(tabs_row).center_x(Length::Fill));
 
         if let Some(idx) = self.selected_output_idx {
-            let out = &self.outputs[idx];
-
-            if self.outputs.len() > 1 {
-                sidebar = sidebar.push(
-                    row![
-                        Space::new().width(100.0),
-                        checkbox(out.enabled).on_toggle(Message::EnabledToggled),
-                        text("Enabled")
-                    ]
-                    .spacing(10),
-                );
-            }
-
-            let label_width = 100.0;
-
-            let row_desc = row![
-                container(text("Description").size(14)).width(label_width),
-                text(&out.description).size(14)
-            ]
-            .spacing(10)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_desc);
-
-            let phys_size_text = if out.physical_size.is_empty() {
-                "Unknown".to_string()
-            } else {
-                out.physical_size.clone()
-            };
-            let row_phys = row![
-                container(text("Physical Size").size(14)).width(label_width),
-                text(phys_size_text).size(14)
-            ]
-            .spacing(10)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_phys);
-
-            let row_scale = row![
-                container(text("DPI Scale").size(14)).width(label_width),
-                text_input("", &self.scale_input)
-                    .on_input(Message::ScaleChanged)
-                    .width(Length::Fixed(60.0)),
-                button("-").on_press(Message::ScaleDec),
-                button("+").on_press(Message::ScaleInc),
-            ]
-            .spacing(5)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_scale);
-
-            let row_pos = row![
-                container(text("Position").size(14)).width(label_width),
-                text_input("", &self.x_input)
-                    .on_input(Message::XChanged)
-                    .width(Length::Fixed(60.0)),
-                button("-").on_press(Message::XDec),
-                button("+").on_press(Message::XInc),
-                text_input("", &self.y_input)
-                    .on_input(Message::YChanged)
-                    .width(Length::Fixed(60.0)),
-                button("-").on_press(Message::YDec),
-                button("+").on_press(Message::YInc),
-            ]
-            .spacing(5)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_pos);
-
-            let cm = out
-                .modes
-                .iter()
-                .find(|m| m.current)
-                .cloned()
-                .unwrap_or(OutputMode {
-                    width: 1920,
-                    height: 1080,
-                    refresh_rate: 60.0,
-                    current: true,
-                    preferred: false,
-                });
-
-            let mut unique_resolutions: Vec<String> = Vec::new();
-            for m in &out.modes {
-                let res = format!("{}x{}", m.width, m.height);
-                if !unique_resolutions.contains(&res) {
-                    unique_resolutions.push(res);
+            if let Some(out) = self.outputs.get(idx) {
+                if self.outputs.len() > 1 {
+                    sidebar = sidebar.push(
+                        row![
+                            Space::new().width(100.0),
+                            checkbox(out.enabled).on_toggle(Message::EnabledToggled),
+                            text("Enabled")
+                        ]
+                        .spacing(10),
+                    );
                 }
-            }
-            let selected_resolution = Some(format!("{}x{}", cm.width, cm.height));
-            let res_options = unique_resolutions.clone();
-            let pick_res = pick_list(res_options, selected_resolution, |s| {
-                Message::ResolutionSizeSelected(s)
-            })
-            .width(Length::Fixed(200.0));
 
-            let row_res = row![
-                container(text("Resolution").size(14)).width(label_width),
-                pick_res
-            ]
-            .spacing(5)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_res);
+                let label_width = 100.0;
 
-            let mut current_rr_idx = 0;
-            let mut rr_labels = Vec::new();
-            let mut rr_mode_indices = Vec::new();
-            for (i, m) in out.modes.iter().enumerate() {
-                if m.width == cm.width && m.height == cm.height {
-                    rr_labels.push(format!("{:.3}", m.refresh_rate));
-                    rr_mode_indices.push(i);
-                    if m.current {
-                        current_rr_idx = rr_labels.len() - 1;
+                let row_desc = row![
+                    container(text("Description").size(14)).width(label_width),
+                    text(&out.description).size(14)
+                ]
+                .spacing(10)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_desc);
+
+                let phys_size_text = if out.physical_size.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    out.physical_size.clone()
+                };
+                let row_phys = row![
+                    container(text("Physical Size").size(14)).width(label_width),
+                    text(phys_size_text).size(14)
+                ]
+                .spacing(10)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_phys);
+
+                let row_scale = row![
+                    container(text("DPI Scale").size(14)).width(label_width),
+                    text_input("", &self.scale_input)
+                        .on_input(Message::ScaleChanged)
+                        .width(Length::Fixed(60.0)),
+                    button("-").on_press(Message::ScaleDec),
+                    button("+").on_press(Message::ScaleInc),
+                ]
+                .spacing(5)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_scale);
+
+                let row_pos = row![
+                    container(text("Position").size(14)).width(label_width),
+                    text_input("", &self.x_input)
+                        .on_input(Message::XChanged)
+                        .width(Length::Fixed(60.0)),
+                    button("-").on_press(Message::XDec),
+                    button("+").on_press(Message::XInc),
+                    text_input("", &self.y_input)
+                        .on_input(Message::YChanged)
+                        .width(Length::Fixed(60.0)),
+                    button("-").on_press(Message::YDec),
+                    button("+").on_press(Message::YInc),
+                ]
+                .spacing(5)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_pos);
+
+                let cm = out
+                    .modes
+                    .iter()
+                    .find(|m| m.current)
+                    .cloned()
+                    .unwrap_or(OutputMode {
+                        width: 1920,
+                        height: 1080,
+                        refresh_rate: 60.0,
+                        current: true,
+                        preferred: false,
+                    });
+
+                let mut unique_resolutions: Vec<String> = Vec::new();
+                for m in &out.modes {
+                    let res = format!("{}x{}", m.width, m.height);
+                    if !unique_resolutions.contains(&res) {
+                        unique_resolutions.push(res);
                     }
                 }
+                let selected_resolution = Some(format!("{}x{}", cm.width, cm.height));
+                let res_options = unique_resolutions.clone();
+                let pick_res = pick_list(res_options, selected_resolution, |s| {
+                    Message::ResolutionSizeSelected(s)
+                })
+                .width(Length::Fixed(200.0));
+
+                let row_res = row![
+                    container(text("Resolution").size(14)).width(label_width),
+                    pick_res
+                ]
+                .spacing(5)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_res);
+
+                let mut current_rr_idx = 0;
+                let mut rr_labels = Vec::new();
+                let mut rr_mode_indices = Vec::new();
+                for (i, m) in out.modes.iter().enumerate() {
+                    if m.width == cm.width && m.height == cm.height {
+                        rr_labels.push(format!("{:.3}", m.refresh_rate));
+                        rr_mode_indices.push(i);
+                        if m.current {
+                            current_rr_idx = rr_labels.len() - 1;
+                        }
+                    }
+                }
+                let rr_options = rr_labels.clone();
+                let selected_rr = if current_rr_idx < rr_labels.len() {
+                    Some(rr_labels[current_rr_idx].clone())
+                } else {
+                    None
+                };
+                let pick_rr = pick_list(rr_options, selected_rr, move |selected: String| {
+                    let local_idx = rr_labels.iter().position(|r| *r == selected).unwrap_or(0);
+                    let mode_idx = rr_mode_indices[local_idx];
+                    Message::ResolutionSelected(mode_idx)
+                })
+                .width(Length::Fixed(100.0));
+
+                let row_rr = row![
+                    container(text("Refresh Rate").size(14)).width(label_width),
+                    pick_rr,
+                    text("Hz").size(14)
+                ]
+                .spacing(5)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_rr);
+
+                let transforms = vec![
+                    "normal".to_string(),
+                    "90".to_string(),
+                    "180".to_string(),
+                    "270".to_string(),
+                    "flipped".to_string(),
+                    "flipped-90".to_string(),
+                    "flipped-180".to_string(),
+                    "flipped-270".to_string(),
+                ];
+                let pick_trans = pick_list(transforms.clone(), Some(out.transform.clone()), |t| {
+                    Message::TransformSelected(t)
+                })
+                .width(Length::Fixed(200.0));
+
+                let row_trans = row![
+                    container(text("Transform").size(14)).width(label_width),
+                    pick_trans
+                ]
+                .spacing(5)
+                .align_y(alignment::Vertical::Center);
+                sidebar = sidebar.push(row_trans);
             }
-            let rr_options = rr_labels.clone();
-            let selected_rr = if current_rr_idx < rr_labels.len() {
-                Some(rr_labels[current_rr_idx].clone())
-            } else {
-                None
-            };
-            let pick_rr = pick_list(rr_options, selected_rr, move |selected: String| {
-                let local_idx = rr_labels.iter().position(|r| *r == selected).unwrap_or(0);
-                let mode_idx = rr_mode_indices[local_idx];
-                Message::ResolutionSelected(mode_idx)
-            })
-            .width(Length::Fixed(100.0));
-
-            let row_rr = row![
-                container(text("Refresh Rate").size(14)).width(label_width),
-                pick_rr,
-                text("Hz").size(14)
-            ]
-            .spacing(5)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_rr);
-
-            let transforms = vec![
-                "normal".to_string(),
-                "90".to_string(),
-                "180".to_string(),
-                "270".to_string(),
-                "flipped".to_string(),
-                "flipped-90".to_string(),
-                "flipped-180".to_string(),
-                "flipped-270".to_string(),
-            ];
-            let pick_trans = pick_list(transforms.clone(), Some(out.transform.clone()), |t| {
-                Message::TransformSelected(t)
-            })
-            .width(Length::Fixed(200.0));
-
-            let row_trans = row![
-                container(text("Transform").size(14)).width(label_width),
-                pick_trans
-            ]
-            .spacing(5)
-            .align_y(alignment::Vertical::Center);
-            sidebar = sidebar.push(row_trans);
         }
 
         if let Some(ref msg) = self.status_message {
@@ -617,37 +626,36 @@ impl<'a> Program<Message> for LayoutCanvas<'a> {
 
                     let snap_threshold = 40;
 
-                    let out = &self.outputs[idx];
-                    let cm = out
-                        .modes
-                        .iter()
-                        .find(|m| m.current)
-                        .cloned()
-                        .unwrap_or(OutputMode {
-                            width: 800,
-                            height: 600,
-                            refresh_rate: 60.0,
-                            current: true,
-                            preferred: false,
-                        });
-                    let (w, h) = Self::logical_size(out, &cm);
+                    if let Some(out) = self.outputs.get(idx) {
+                        let cm = out
+                            .modes
+                            .iter()
+                            .find(|m| m.current)
+                            .cloned()
+                            .unwrap_or(OutputMode {
+                                width: 800,
+                                height: 600,
+                                refresh_rate: 60.0,
+                                current: true,
+                                preferred: false,
+                            });
+                        let (w, h) = Self::logical_size(out, &cm);
 
-                    let mut snapped_x = new_x;
-                    let mut snapped_y = new_y;
-                    let mut min_dist_x = snap_threshold;
-                    let mut min_dist_y = snap_threshold;
+                        let mut snapped_x = new_x;
+                        let mut snapped_y = new_y;
+                        let mut min_dist_x = snap_threshold;
+                        let mut min_dist_y = snap_threshold;
 
-                    let my_left = new_x;
-                    let my_right = new_x + w;
-                    let my_top = new_y;
-                    let my_bottom = new_y + h;
+                        let my_left = new_x;
+                        let my_right = new_x + w;
+                        let my_top = new_y;
+                        let my_bottom = new_y + h;
 
-                    for (i, other) in self.outputs.iter().enumerate() {
-                        if i == idx {
-                            continue;
-                        }
-                        let other_cm =
-                            other
+                        for (i, other) in self.outputs.iter().enumerate() {
+                            if i == idx {
+                                continue;
+                            }
+                            let other_cm = other
                                 .modes
                                 .iter()
                                 .find(|m| m.current)
@@ -659,66 +667,67 @@ impl<'a> Program<Message> for LayoutCanvas<'a> {
                                     current: true,
                                     preferred: false,
                                 });
-                        let (other_w, other_h) = Self::logical_size(other, &other_cm);
+                            let (other_w, other_h) = Self::logical_size(other, &other_cm);
 
-                        let other_left = other.position.0;
-                        let other_right = other.position.0 + other_w;
-                        let other_top = other.position.1;
-                        let other_bottom = other.position.1 + other_h;
+                            let other_left = other.position.0;
+                            let other_right = other.position.0 + other_w;
+                            let other_top = other.position.1;
+                            let other_bottom = other.position.1 + other_h;
 
-                        let x_overlap = my_left < other_right + snap_threshold
-                            && my_right > other_left - snap_threshold;
-                        let y_overlap = my_top < other_bottom + snap_threshold
-                            && my_bottom > other_top - snap_threshold;
+                            let x_overlap = my_left < other_right + snap_threshold
+                                && my_right > other_left - snap_threshold;
+                            let y_overlap = my_top < other_bottom + snap_threshold
+                                && my_bottom > other_top - snap_threshold;
 
-                        if y_overlap {
-                            if (my_left - other_right).abs() < min_dist_x {
-                                min_dist_x = (my_left - other_right).abs();
-                                snapped_x = other_right;
+                            if y_overlap {
+                                if (my_left - other_right).abs() < min_dist_x {
+                                    min_dist_x = (my_left - other_right).abs();
+                                    snapped_x = other_right;
+                                }
+                                if (my_right - other_left).abs() < min_dist_x {
+                                    min_dist_x = (my_right - other_left).abs();
+                                    snapped_x = other_left - w;
+                                }
+                                if (my_left - other_left).abs() < min_dist_x {
+                                    min_dist_x = (my_left - other_left).abs();
+                                    snapped_x = other_left;
+                                }
                             }
-                            if (my_right - other_left).abs() < min_dist_x {
-                                min_dist_x = (my_right - other_left).abs();
-                                snapped_x = other_left - w;
-                            }
-                            if (my_left - other_left).abs() < min_dist_x {
-                                min_dist_x = (my_left - other_left).abs();
-                                snapped_x = other_left;
+
+                            if x_overlap {
+                                if (my_top - other_bottom).abs() < min_dist_y {
+                                    min_dist_y = (my_top - other_bottom).abs();
+                                    snapped_y = other_bottom;
+                                }
+                                if (my_bottom - other_top).abs() < min_dist_y {
+                                    min_dist_y = (my_bottom - other_top).abs();
+                                    snapped_y = other_top - h;
+                                }
+                                if (my_top - other_top).abs() < min_dist_y {
+                                    min_dist_y = (my_top - other_top).abs();
+                                    snapped_y = other_top;
+                                }
                             }
                         }
 
-                        if x_overlap {
-                            if (my_top - other_bottom).abs() < min_dist_y {
-                                min_dist_y = (my_top - other_bottom).abs();
-                                snapped_y = other_bottom;
-                            }
-                            if (my_bottom - other_top).abs() < min_dist_y {
-                                min_dist_y = (my_bottom - other_top).abs();
-                                snapped_y = other_top - h;
-                            }
-                            if (my_top - other_top).abs() < min_dist_y {
-                                min_dist_y = (my_top - other_top).abs();
-                                snapped_y = other_top;
-                            }
+                        if snapped_x == new_x {
+                            snapped_x = (snapped_x as f32 / 10.0).round() as i32 * 10;
                         }
-                    }
+                        if snapped_y == new_y {
+                            snapped_y = (snapped_y as f32 / 10.0).round() as i32 * 10;
+                        }
 
-                    if snapped_x == new_x {
-                        snapped_x = (snapped_x as f32 / 10.0).round() as i32 * 10;
-                    }
-                    if snapped_y == new_y {
-                        snapped_y = (snapped_y as f32 / 10.0).round() as i32 * 10;
-                    }
+                        if snapped_x < 0 {
+                            snapped_x = 0;
+                        }
+                        if snapped_y < 0 {
+                            snapped_y = 0;
+                        }
 
-                    if snapped_x < 0 {
-                        snapped_x = 0;
+                        return Some(Action::publish(Message::MonitorPositioned(
+                            idx, snapped_x, snapped_y,
+                        )));
                     }
-                    if snapped_y < 0 {
-                        snapped_y = 0;
-                    }
-
-                    return Some(Action::publish(Message::MonitorPositioned(
-                        idx, snapped_x, snapped_y,
-                    )));
                 } else {
                     let mut new_hovered = None;
                     for (i, out) in self.outputs.iter().enumerate() {

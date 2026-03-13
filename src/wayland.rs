@@ -172,13 +172,11 @@ impl Dispatch<zwlr_output_head_v1::ZwlrOutputHeadV1, ()> for WaylandState {
                 builder.position = (x, y);
             }
             zwlr_output_head_v1::Event::Transform { transform } => {
-                builder.transform = transform_to_string(transform.into_result().unwrap_or(
-                    wayland_client::WEnum::Value(
+                builder.transform = transform_to_string(
+                    transform.into_result().unwrap_or(
                         wayland_client::protocol::wl_output::Transform::Normal,
-                    )
-                    .into_result()
-                    .unwrap(),
-                ));
+                    ),
+                );
             }
             zwlr_output_head_v1::Event::Scale { scale } => {
                 builder.scale = scale as f32;
@@ -382,12 +380,6 @@ pub fn apply_outputs(outputs: &[Output]) -> Result<(), String> {
         .roundtrip(&mut state)
         .map_err(|e| e.to_string())?;
 
-    if state.output_manager.is_none() {
-        return Err(
-            "Compositor does not support wlr-output-management-unstable-v1".to_string(),
-        );
-    }
-
     event_queue
         .roundtrip(&mut state)
         .map_err(|e| e.to_string())?;
@@ -395,7 +387,8 @@ pub fn apply_outputs(outputs: &[Output]) -> Result<(), String> {
         .roundtrip(&mut state)
         .map_err(|e| e.to_string())?;
 
-    let manager = state.output_manager.as_ref().unwrap();
+    let manager = state.output_manager.as_ref()
+        .ok_or_else(|| "Compositor does not support wlr-output-management-unstable-v1".to_string())?;
     let serial = state.serial.unwrap_or(0);
     let config = manager.create_configuration(serial, &qhandle, ());
 
@@ -462,5 +455,5 @@ pub fn apply_outputs(outputs: &[Output]) -> Result<(), String> {
         }
     }
 
-    state.apply_status.unwrap()
+    state.apply_status.ok_or_else(|| "Compositor did not send apply status".to_string())?
 }
