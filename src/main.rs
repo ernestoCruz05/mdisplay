@@ -1,6 +1,7 @@
 mod backend;
 mod settings;
 mod ui;
+mod wayland;
 
 use clap::Parser;
 

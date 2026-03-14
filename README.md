@@ -6,17 +6,16 @@ A GUI monitor layout manager for [mangowc](https://mangowc.vercel.app/). Designe
 
 * **Visual Canvas**: Drag and drop your screen layouts efficiently with magnetic edge snapping.
 * **Hardware Configurations**: Manipulate DPI Scaling, Refresh Rates, Resolutions, and Orientation transforms.
-* **Live Previews**: Temporarily apply your changes to experiment with `wlr-randr` configurations.
+* **Live Previews**: Temporarily apply your changes to experiment with custom layout configurations.
 * **Restore Default**: Safely revert to your base configuration. MDisplay takes a frozen snapshot of your pre-existing monitor rules the very first time it runs, allowing you to easily undo all layout changes without affecting your other `mangowc` settings.
 * **Persistent Saving**: Save the finalized `monitorrule` lines directly to `~/.config/mango/monitors.conf`, automatically appended to your `config.conf`.
 
 ## Requirements
 
-MDisplay relies on `wlr-randr` to query the currently active outputs and temporarily apply modifications. 
+MDisplay relies on the `wlr-output-management-unstable-v1` Wayland protocol to query the currently active outputs and apply modifications. 
 
 Before running, ensure you have:
-* The `mangowc` Wayland compositor installed.
-* `wlr-randr` installed on your system.
+* The `mangowc` Wayland compositor installed (or any wlroots-based compositor that supports the protocol).
 * Rust toolchain (Cargo, rustc) to compile the application.
 
 ## Installation
