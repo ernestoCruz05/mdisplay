@@ -1,4 +1,5 @@
 mod backend;
+mod rules;
 mod settings;
 mod ui;
 mod wayland;
@@ -85,5 +86,6 @@ fn main() -> iced::Result {
     .title("MDisplay")
     .theme(move |_app: &ui::MangoDisplay| custom_theme.clone())
     .window_size(iced::Size::new(1000.0, 700.0))
+    .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
     .run()
 }

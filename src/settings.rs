@@ -11,6 +11,12 @@ pub struct AppSettings {
     pub auto_append_source: bool,
     #[serde(default)]
     pub monitors_bak_path: String,
+    #[serde(default)]
+    pub rules_conf_path: String,
+    #[serde(default)]
+    pub rules_bak_path: String,
+    #[serde(default)]
+    pub rules_conf_hash: Option<u64>,
 }
 
 impl Default for AppSettings {
@@ -20,6 +26,9 @@ impl Default for AppSettings {
             config_conf_path: "~/.config/mango/config.conf".to_string(),
             auto_append_source: true,
             monitors_bak_path: "~/.config/mango/monitors.bak".to_string(),
+            rules_conf_path: "~/.config/mango/rules.conf".to_string(),
+            rules_bak_path: "~/.config/mango/rules.bak".to_string(),
+            rules_conf_hash: None,
         }
     }
 }

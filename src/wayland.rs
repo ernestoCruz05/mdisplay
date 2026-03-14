@@ -6,6 +6,10 @@ use wayland_protocols_wlr::output_management::v1::client::{
     zwlr_output_configuration_head_v1, zwlr_output_configuration_v1, zwlr_output_head_v1,
     zwlr_output_manager_v1, zwlr_output_mode_v1,
 };
+use wayland_protocols_wlr::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
+    zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
+};
 
 use crate::backend::{Output, OutputMode};
 
@@ -357,6 +361,144 @@ pub fn fetch_outputs() -> Result<Vec<Output>, String> {
     }
 
     Ok(outputs)
+}
+
+// ── Foreign Toplevel (window picker) ────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct ToplevelInfo {
+    pub app_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Default)]
+struct ToplevelBuilder {
+    app_id: String,
+    title: String,
+    done: bool,
+}
+
+struct ToplevelState {
+    manager: Option<ZwlrForeignToplevelManagerV1>,
+    handles: HashMap<wayland_client::backend::ObjectId, ToplevelBuilder>,
+}
+
+impl Dispatch<wl_registry::WlRegistry, ()> for ToplevelState {
+    fn event(
+        state: &mut Self,
+        registry: &wl_registry::WlRegistry,
+        event: wl_registry::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_registry::Event::Global { name, interface, version } = event {
+            if interface == "zwlr_foreign_toplevel_manager_v1" {
+                let mgr = registry.bind::<ZwlrForeignToplevelManagerV1, _, _>(
+                    name,
+                    version.min(3),
+                    qh,
+                    (),
+                );
+                state.manager = Some(mgr);
+            }
+        }
+    }
+}
+
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for ToplevelState {
+    fn event(
+        state: &mut Self,
+        _proxy: &ZwlrForeignToplevelManagerV1,
+        event: zwlr_foreign_toplevel_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => {
+                let id = toplevel.id();
+                state.handles.entry(id).or_default();
+            }
+            zwlr_foreign_toplevel_manager_v1::Event::Finished => {}
+            _ => {}
+        }
+    }
+
+    wayland_client::event_created_child!(ToplevelState, ZwlrForeignToplevelManagerV1, [
+        0 => (ZwlrForeignToplevelHandleV1, ())
+    ]);
+}
+
+impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for ToplevelState {
+    fn event(
+        state: &mut Self,
+        proxy: &ZwlrForeignToplevelHandleV1,
+        event: zwlr_foreign_toplevel_handle_v1::Event,
+        _: &(),
+        _: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        let id = proxy.id();
+        let builder = match state.handles.get_mut(&id) {
+            Some(b) => b,
+            None => return,
+        };
+        match event {
+            zwlr_foreign_toplevel_handle_v1::Event::AppId { app_id } => {
+                builder.app_id = app_id;
+            }
+            zwlr_foreign_toplevel_handle_v1::Event::Title { title } => {
+                builder.title = title;
+            }
+            zwlr_foreign_toplevel_handle_v1::Event::Done => {
+                builder.done = true;
+            }
+            zwlr_foreign_toplevel_handle_v1::Event::Closed => {
+                state.handles.remove(&id);
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn fetch_toplevels() -> Vec<ToplevelInfo> {
+    let conn = match Connection::connect_to_env() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut event_queue = conn.new_event_queue();
+    let qhandle = event_queue.handle();
+    let display = conn.display();
+    display.get_registry(&qhandle, ());
+
+    let mut state = ToplevelState {
+        manager: None,
+        handles: HashMap::new(),
+    };
+
+    if event_queue.roundtrip(&mut state).is_err() {
+        return Vec::new();
+    }
+
+    if state.manager.is_none() {
+        return Vec::new();
+    }
+
+    // Two roundtrips: first collects toplevel handles, second collects their events
+    let _ = event_queue.roundtrip(&mut state);
+    let _ = event_queue.roundtrip(&mut state);
+
+    state
+        .handles
+        .into_values()
+        .filter(|b| b.done)
+        .map(|b| ToplevelInfo {
+            app_id: b.app_id,
+            title: b.title,
+        })
+        .collect()
 }
 
 pub fn apply_outputs(outputs: &[Output]) -> Result<(), String> {
