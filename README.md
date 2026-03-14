@@ -1,18 +1,28 @@
 # MDisplay
 
-A GUI monitor layout manager for [mangowc](https://mangowc.vercel.app/). Designed to be similar to tools like `nwg-displays` or `wdisplays`.
+A GUI monitor layout manager and window-rule editor for [mangowc](https://mangowc.vercel.app/). Designed to be similar to tools like `nwg-displays` or `wdisplays`.
+
+> [!WARNING]
+You are currently viewing the `expanded` branch. This version includes the full Rules Editor and advanced config I/O features, making it a heavier, more feature-rich application than the lightweight, monitor-only version found on the `main` branch.
 
 ## Features
 
-* **Visual Canvas**: Drag and drop your screen layouts efficiently with magnetic edge snapping.
-* **Hardware Configurations**: Manipulate DPI Scaling, Refresh Rates, Resolutions, and Orientation transforms.
-* **Live Previews**: Temporarily apply your changes to experiment with custom layout configurations.
-* **Restore Default**: Safely revert to your base configuration. MDisplay takes a frozen snapshot of your pre-existing monitor rules the very first time it runs, allowing you to easily undo all layout changes without affecting your other `mangowc` settings.
-* **Persistent Saving**: Save the finalized `monitorrule` lines directly to `~/.config/mango/monitors.conf`, automatically appended to your `config.conf`.
+### Monitor Management
+* **Visual Canvas**: Drag and drop your screen layouts with magnetic edge snapping.
+* **Hardware Configuration**: Set DPI scaling, refresh rates, resolutions, and orientation transforms per output.
+* **Live Preview**: Temporarily apply changes to experiment with layout configurations before committing.
+* **Safe Restore**: Revert to your base configuration at any time. MDisplay snapshots your pre-existing monitor rules on first run, so you can always undo all layout changes without touching your other `mangowc` settings.
+* **Persistent Saving**: Write finalized `monitorrule` lines directly to `~/.config/mango/monitors.conf`, with automatic `source=` appending to `config.conf`.
+
+### Rules Editor
+* **Window Rules**: Create and edit per-application window rules — floating state, geometry, opacity, animations, tags, and more.
+* **Tag Rules**: Define per-tag layout defaults including layout name, master count, and master ratio.
+* **Layer Rules**: Configure layer surface rules for blur, shadow, and animation overrides.
+* **Import & Sync**: On startup MDisplay reads your existing `rules.conf`. If the file has been modified outside of MDisplay since the last session, it automatically backs it up to `rules.bak` and re-imports the updated rules, keeping the GUI in sync with manual edits.
 
 ## Requirements
 
-MDisplay relies on the `wlr-output-management-unstable-v1` Wayland protocol to query the currently active outputs and apply modifications. 
+MDisplay relies on the `wlr-output-management-unstable-v1` Wayland protocol to query active outputs and apply modifications.
 
 Before running, ensure you have:
 * The `mangowc` Wayland compositor installed (or any wlroots-based compositor that supports the protocol).
@@ -20,7 +30,7 @@ Before running, ensure you have:
 
 ## Installation
 
-The easiest way to install MDisplay and make it appear in application launchers (like Rofi or Wofi) is to use the provided install script. This will compile the program and set up the desktop entry automatically:
+The easiest way to install MDisplay and make it appear in application launchers (like Rofi or Wofi) is to use the provided install script. This compiles the program and sets up the desktop entry automatically:
 
 ```bash
 git clone https://github.com/ernestoCruz05/mdisplay.git
@@ -30,8 +40,6 @@ cd mdisplay
 
 ### Manual Installation
 
-Alternatively, you can manually compile using Cargo and copy the `.desktop` file:
-
 ```bash
 cargo install --path .
 mkdir -p ~/.local/share/applications
@@ -39,11 +47,11 @@ cp mdisplay.desktop ~/.local/share/applications/
 ```
 
 > [!NOTE]
-> MDisplay is installed to Cargo's default binary directory. If your terminal or application launcher says "command not found", ensure `~/.cargo/bin` is in your `PATH`. You can add it by putting `export PATH="$HOME/.cargo/bin:$PATH"` in your `~/.bashrc` or `~/.zshrc`.
+> MDisplay is installed to Cargo's default binary directory. If your terminal or application launcher says "command not found", ensure `~/.cargo/bin` is in your `PATH`. Add `export PATH="$HOME/.cargo/bin:$PATH"` to your `~/.bashrc` or `~/.zshrc`.
 
 ## Usage
 
-You can customize where `mdisplay` saves your hardware configurations, and whether it automatically links them, by passing arguments before launching the GUI. These preferences are permanently saved to `~/.config/mdisplay/settings.json`.
+You can customise where MDisplay reads and writes its configuration files. These preferences are saved permanently to `~/.config/mdisplay/settings.json`.
 
 ```bash
 # Check current build version
@@ -55,13 +63,35 @@ mdisplay --set-monitors-path ~/.config/some_folder/my_custom_monitors.conf
 # Set a custom target for the main Wayland config appending
 mdisplay --set-config-path ~/.config/some_other_folder/config.conf
 
-# Disable auto-appending the source include line completely (you will need to manually add it, if you want it for some reason)
+# Disable auto-appending the source include line
 mdisplay --auto-append-source false
+
+# Reset all settings to their defaults
+mdisplay --reset-settings
 ```
 
-## Configuration Output Files
+## Configuration Files
 
-The **Save** function integrates natively with mangowc config systems. Output format generally matches:
+| File | Default path | Purpose |
+|------|-------------|---------|
+| `monitors.conf` | `~/.config/mango/monitors.conf` | Written by MDisplay on Save |
+| `monitors.bak` | `~/.config/mango/monitors.bak` | Snapshot of pre-existing monitor rules |
+| `rules.conf` | `~/.config/mango/rules.conf` | Read and written by the Rules editor |
+| `rules.bak` | `~/.config/mango/rules.bak` | Backup created when an external edit is detected |
+| `settings.json` | `~/.config/mdisplay/settings.json` | MDisplay preferences |
+
+### Monitor config format
+
 ```conf
 monitorrule=name:DP-1,width:1920,height:1080,refresh:144.000000,x:0,y:0,scale:1.000000,rr:0
+```
+
+### Rules config format
+
+MDisplay preserves all existing content in `rules.conf` (comments, other directives). Managed rules are written as a block at the end of the file under a `# Generated by mdiplay` header.
+
+```conf
+windowrule=appid:firefox,isfloating:0,width:1280,height:720
+tagrule=id:1,layout_name:tile,nmaster:1,mfact:0.55
+layerrule=layer_name:waybar,noblur:1
 ```

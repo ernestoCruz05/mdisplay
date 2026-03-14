@@ -363,7 +363,6 @@ pub fn fetch_outputs() -> Result<Vec<Output>, String> {
     Ok(outputs)
 }
 
-// ── Foreign Toplevel (window picker) ────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct ToplevelInfo {
@@ -486,7 +485,6 @@ pub fn fetch_toplevels() -> Vec<ToplevelInfo> {
         return Vec::new();
     }
 
-    // Two roundtrips: first collects toplevel handles, second collects their events
     let _ = event_queue.roundtrip(&mut state);
     let _ = event_queue.roundtrip(&mut state);
 

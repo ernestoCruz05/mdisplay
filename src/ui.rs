@@ -242,6 +242,7 @@ pub enum Message {
     CancelLayerRule,
     LayerRuleChanged(LayerRuleField),
     SaveRulesConfig,
+    DismissStatus,
 }
 
 /// Raw string drafts for float fields so intermediate input (e.g. "0.") is preserved.
@@ -428,6 +429,14 @@ impl MangoDisplay {
         }
     }
 
+    fn set_status(&mut self, msg: StatusMessage) -> Task<Message> {
+        self.status_message = Some(msg);
+        Task::perform(
+            futures_timer::Delay::new(std::time::Duration::from_secs(4)),
+            |_| Message::DismissStatus,
+        )
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let mut task = Task::none();
         match message {
@@ -567,23 +576,22 @@ impl MangoDisplay {
             Message::ApplyClicked => {
                 self.normalize_positions();
                 match apply_outputs(&self.outputs) {
-                    Ok(()) => self.status_message = Some(StatusMessage::Success("Applied successfully!".into())),
-                    Err(e) => self.status_message = Some(StatusMessage::Error(format!("Apply error: {}", e))),
+                    Ok(()) => task = self.set_status(StatusMessage::Success("Applied successfully!".into())),
+                    Err(e) => task = self.set_status(StatusMessage::Error(format!("Apply error: {}", e))),
                 }
             }
             Message::SaveClicked => {
                 self.normalize_positions();
                 match save_config(&self.outputs, &self.settings) {
-                    Ok(()) => {
-                        self.status_message =
-                            Some(StatusMessage::Success(format!("Saved to {}", self.settings.monitors_conf_path)))
-                    }
-                    Err(e) => self.status_message = Some(StatusMessage::Error(format!("Save error: {}", e))),
+                    Ok(()) => task = self.set_status(StatusMessage::Success(
+                        format!("Saved to {}", self.settings.monitors_conf_path)
+                    )),
+                    Err(e) => task = self.set_status(StatusMessage::Error(format!("Save error: {}", e))),
                 }
             }
             Message::RestoreDefaultClicked => match restore_default_config(&self.settings) {
-                Ok(()) => self.status_message = Some(StatusMessage::Success("Restored to default config!".into())),
-                Err(e) => self.status_message = Some(StatusMessage::Error(format!("Restore error: {}", e))),
+                Ok(()) => task = self.set_status(StatusMessage::Success("Restored to default config!".into())),
+                Err(e) => task = self.set_status(StatusMessage::Error(format!("Restore error: {}", e))),
             },
             Message::SwitchView(v) => {
                 self.current_view = v;
@@ -636,10 +644,10 @@ impl MangoDisplay {
                     let appid_empty = draft.appid.as_ref().map(|s| s.is_empty()).unwrap_or(true);
                     let title_empty = draft.title.as_ref().map(|s| s.is_empty()).unwrap_or(true);
                     if appid_empty && title_empty {
-                        self.status_message = Some(StatusMessage::Error(
+                        self.editing_window_rule = Some((idx, draft));
+                        task = self.set_status(StatusMessage::Error(
                             "At least one matcher (App ID or Title) is required.".to_string(),
                         ));
-                        self.editing_window_rule = Some((idx, draft));
                     } else {
                         match idx {
                             Some(i) => {
@@ -762,10 +770,10 @@ impl MangoDisplay {
             Message::SaveTagRule => {
                 if let Some((idx, draft)) = self.editing_tag_rule.take() {
                     if draft.id.is_none() {
-                        self.status_message = Some(StatusMessage::Error(
+                        self.editing_tag_rule = Some((idx, draft));
+                        task = self.set_status(StatusMessage::Error(
                             "Tag rule requires an ID".to_string(),
                         ));
-                        self.editing_tag_rule = Some((idx, draft));
                     } else {
                         match idx {
                             Some(i) => {
@@ -810,10 +818,10 @@ impl MangoDisplay {
                 if let Some((idx, draft)) = self.editing_layer_rule.take() {
                     let name_empty = draft.layer_name.as_ref().map(|s| s.is_empty()).unwrap_or(true);
                     if name_empty {
-                        self.status_message = Some(StatusMessage::Error(
+                        self.editing_layer_rule = Some((idx, draft));
+                        task = self.set_status(StatusMessage::Error(
                             "Layer rule requires a layer name".to_string(),
                         ));
-                        self.editing_layer_rule = Some((idx, draft));
                     } else {
                         match idx {
                             Some(i) => {
@@ -840,11 +848,11 @@ impl MangoDisplay {
                         // our own save as an external modification.
                         self.settings.rules_conf_hash = crate::rules::hash_file(&expanded);
                         let _ = self.settings.save();
-                        self.status_message = Some(StatusMessage::Success(
+                        task = self.set_status(StatusMessage::Success(
                             format!("Rules saved to {}", self.settings.rules_conf_path)
                         ));
                     }
-                    Err(e) => self.status_message = Some(StatusMessage::Error(
+                    Err(e) => task = self.set_status(StatusMessage::Error(
                         format!("Save error: {}", e)
                     )),
                 }
@@ -860,6 +868,9 @@ impl MangoDisplay {
                         LayerRuleField::AnimTypeClose(v) => draft.animation_type_close = v,
                     }
                 }
+            }
+            Message::DismissStatus => {
+                self.status_message = None;
             }
         }
         task
