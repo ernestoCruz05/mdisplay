@@ -64,5 +64,5 @@ mdisplay --auto-append-source false
 
 The **Save** function integrates natively with mangowm config systems. Output format generally matches:
 ```conf
-monitorrule=name:DP-1,width:1920,height:1080,refresh:144.000000,x:0,y:0,scale:1.000000,rr:0,vrr:0
+monitor_rule=name:DP-1,width:1920,height:1080,refresh:144.000000,x:0,y:0,scale:1.000000,rr:0,vrr:0
 ```
